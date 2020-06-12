@@ -5,7 +5,7 @@ rm(list = ls())
 
 # Setup -----
 projects <- c("TCGA-BRCA", "TCGA-COAD", "TCGA-HNSC", "TCGA-KIRC", "TCGA-KIRP",
-              "TCGA-LIHC", "TCGA-LUAD", "TCGA-READ", "TCGA-STAD", "TCGA-THCA")
+              "TCGA-LIHC", "TCGA-LUAD", "TCGA-STAD", "TCGA-THCA")
 polarity.genes <- tibble(
   Complex = c(
     rep("PAR", 5), rep("Crumbs", 5), rep("Scribble", 7),
@@ -88,7 +88,6 @@ dat.avg <- dat.tpm %>%
   inner_join(polarity.genes, by = "Symbol")
 
 p <- dat.avg %>%
-  filter(Project != "READ") %>%
   inner_join(gene.list, by = c("Project", "Complex", "Symbol")) %>%
   mutate(
     TumorStage = case_when(
@@ -111,4 +110,4 @@ p <- dat.avg %>%
         palette = "jco")
 
 ggsave(str_glue("~/storage/data/archive/muscle/supp_tables/figure_2/Figure 2.tiff"),
-       p, width = 9, height = 11, units = "in", dpi = "print")
+       p, width = 9, height = 11, units = "in", dpi = 200)

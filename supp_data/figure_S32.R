@@ -14,5 +14,5 @@ ggscatter(dat, x = "up_cancer_types", y = "down_cancer_types") %>%
   scale_y_continuous(breaks=0:9) +
   scale_x_continuous(breaks=0:9)
 
-ggsave("~/storage/data/archive/muscle/supp_tables/Figure S33.tiff",
-       width = 7, height = 7, units = "in", dpi = "print")
+ggsave("~/storage/data/archive/muscle/supp_tables/Figure S32.tiff",
+       width = 7, height = 7, units = "in", dpi = 150)
