@@ -3,7 +3,7 @@ This folder contains all the code used to generate graphs, tables, and supplemen
   - table 2 # of up regulated/down regulated/mutation enriched pathways -- count pathways for table 2.ipynb
   - count the # of mutations for each complex for table 2h -- figure 2h complex mutation count.ipynb
   - calculate mutation background frequency, calculate mutation p values and store them, and calculate table S3 -- filter my background mutation and table S3.ipynb
-  - filter mutation by p value to get table S20, and figure 2a -- S20 all selected genes and figure 2a.ipynb
+  - filter mutation by p value to get table S20 -- S20 all selected genes.ipynb
   - create table SX -- SX.ipynb
   - create table 3 in paper -- table 3 dev&diff up mutation subset enrichment.ipynb
   - create table S2 -- table S2 average of polarity complex.ipynb
