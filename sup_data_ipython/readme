@@ -1,0 +1,5 @@
+This folder contains all the code used to generate graphs, tables, and supplementary data, including:
+  - consistency mesurement -- consistency_mesurement.ipynb
+  - table 2 # of up regulated/down regulated/mutation enriched pathways -- count pathways for table 2.ipynb
+  - count the # of mutations for each complex for table 2h -- figure 2h complex mutation count.ipynb
+  - calculate mutation background frequency, filter mutation by p values, and calculate table S3 -- filter my background mutation and table S3.ipynb
