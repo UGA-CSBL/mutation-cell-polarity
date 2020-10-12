@@ -4,7 +4,7 @@ rm(list = ls())
 
 # Setup -----
 projects <- c("TCGA-BRCA", "TCGA-COAD", "TCGA-HNSC", "TCGA-KIRC", "TCGA-KIRP",
-              "TCGA-LIHC", "TCGA-LUAD", "TCGA-READ", "TCGA-STAD", "TCGA-THCA")
+              "TCGA-LIHC", "TCGA-LUAD", "TCGA-STAD", "TCGA-THCA")
 
 gene.list <- c("ACTA1", "ACTA2", "ACTB", "ACTBL2", "ACTC1", "ACTG1", "ACTG2",
                "ACTL10", "ACTL6A", "ACTL6B", "ACTL7A", "ACTL7B", "ACTL8", "ACTL9",

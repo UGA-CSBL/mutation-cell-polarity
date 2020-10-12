@@ -55,9 +55,7 @@ rm(clinical, fpkm.annot)
 mutation.impact <- data.table::fread("~/CSBL_shared/UCSC_Xena/DNASeq/mutation_impact.csv") %>%
   group_by(Impact) %>%
   summarise(Term = paste(Term, collapse = "|"))
-mutations <- data.table::fread(
-  "~/CSBL_shared/UCSC_Xena/DNASeq/GDC-PANCAN.mutect2_snv.tsv"
-) %>%
+mutations <- data.table::fread("~/CSBL_shared/UCSC_Xena/DNASeq/GDC-PANCAN.mutect2_snv.tsv") %>%
   filter(Sample_ID %in% annot$SampleID) %>%
   mutate(Impact = case_when(
     str_detect(effect, mutation.impact$Term[mutation.impact$Impact == "HIGH"]) ~ "HIGH",
@@ -66,7 +64,12 @@ mutations <- data.table::fread(
     str_detect(effect, mutation.impact$Term[mutation.impact$Impact == "LOW"]) ~ "LOW",
     T ~ "OTHER"  # not present
   )) %>%
-  filter(Impact != "LOW") %>%
+  filter(Impact != "LOW")
+
+# Correct aliases -----
+mutations <- mutations %>%
+  mutate(MutationLength = end - start + 1) %>%
+  filter(MutationLength < 4) %>%
   select(SampleID = Sample_ID, Symbol = gene, Impact)
 
 transform.alias <- function(genes) {
@@ -127,65 +130,65 @@ dat.tpm.avg <- dat.tpm %>%
 
 # Plot number of mutations vs. average expression -----
 # For each stage (early and advanced) of a cancer type, plot the relationship
-# between the normalized number of mutations per gene vs. the average expession
+# between the normalized number of mutations per gene vs. the average expression
 # level of the gene as follows, where the normalized number of mutations per gene
 # is the total number of mutations in a gene divided by the number of genomes:
-# the x-axis is for normalized number of genes; you can bin genes toegther with
+# the x-axis is for normalized number of genes; you can bin genes together with
 # similar numbers of mutations, and the y-axis is for the average expressions.
 # For example, if you have a bin containing k genes with similar numbers of
-# mutations, then plot the average expession level for each gene across all the k
+# mutations, then plot the average expression level for each gene across all the k
 # genes like a boxplot for the bin.
 dat <- dat.tpm.avg %>%
-
   # Add in mutation data
   inner_join(mut.summary, by = c("Project", "TumorStage", "Symbol")) %>%
-
-  # Keep expression data of normal samples
-  # pivot_wider(names_from = "TumorStage", values_from = "AvgTPM") %>%
-  # inner_join(dat.tpm.avg %>%
-  #              filter(TumorStage == "Normal") %>%
-  #              select(Project, Symbol, Normal = AvgTPM),
-  #            by = c("Project", "Symbol")) %>%
-  # pivot_longer(c(Tumor, Normal), names_to = "TumorStage", values_to = "AvgTPM") %>%
-  # filter(!is.na(AvgTPM)) %>%
-  select(Project, TumorStage, Symbol, NormMutations, AvgTPM) %>%
+  select(Project, Symbol, NormMutations, AvgTPM) %>%
 
   # quantile-based binning
   group_by(Project) %>%
-  mutate(NormMutations = cut(NormMutations,
-                             breaks = unname(quantile(NormMutations, probs = c(0, 0.95, 1))),
-                             include.lowest = T)) %>%
+  mutate(
+    MutationMin = min(NormMutations),
+    MutationPercentile = quantile(NormMutations, probs = 0.95),
+    MutationMax = max(NormMutations)
+  ) %>%
   ungroup() %>%
+
+  mutate(MutationGroup = case_when(
+    NormMutations < MutationPercentile ~ "0-95th",
+    T ~ "95-100th"
+  )) %>%
+  mutate(NormMutations = case_when(
+    NormMutations < MutationPercentile ~ str_glue("({round(MutationMin, 3)}, {round(MutationPercentile, 3)}]"),
+    T ~ str_glue("({round(MutationPercentile, 3)}, {round(MutationMax, 3)}]")
+  )) %>%
+  # mutate(NormMutations = cut(NormMutations,
+  #                            breaks = unname(quantile(NormMutations, probs = c(0, 0.95, 1))),
+  #                            include.lowest = T)) %>%
 
   # Tweak for plotting
   mutate(
     AvgTPM = log(AvgTPM + 0.1),
-    # TumorStage = case_when(
-    #   TumorStage == "Late" ~ "Advanced",
-    #   T ~ TumorStage
-    # ),
-    # TumorStage = factor(TumorStage, levels = c("Normal", "Early", "Advanced")),
-    TumorStage = factor(case_when(
-      TumorStage == "Normal" ~ "Normal",
-      T ~ "Tumor"
-    )),
-    Project = str_remove(Project, "^TCGA-")
+    Project = str_remove(Project, "^TCGA-"),
+    # MutationGroup = fct_relevel(MutationGroup, "95-100th")
   )
 
-dat.sample.num <- count(dat, Project, TumorStage, NormMutations)
+dat.sample.num <- count(dat, Project, NormMutations)
 
 p <- ggboxplot(dat, x = "NormMutations", y = "AvgTPM",
-               # group = "TumorStage", color = "TumorStage"
-               ) %>%
-  facet(facet.by = "Project", nrow = 3, scales = "free") %>%
+               group = "MutationGroup", color = "MutationGroup"
+) %>%
+  facet(facet.by = "Project", nrow = 3, scales = "free", ) %>%
   ggpar(xlab = "Normalized # of mutations",
         ylab = "Average expression in ln(TPM + 0.1)",
-        legend.title = "",
+        legend.title = "Mutation # Percentile",
         font.main = c(18, "bold", "black"),
         font.legend = 16, font.x = 16, font.y = 16,
-        x.text.angle = 45,
         palette = "jco") +
-  geom_text(dat = dat.sample.num, aes(x = NormMutations, y = Inf, label = n), vjust = 1)
+  geom_text(dat = dat.sample.num, aes(x = NormMutations, y = Inf, label = n), vjust = 1) +
+  # hack to keep strip bar but remove text label
+  theme(
+    strip.text.x = element_text(color = "#f2f2f2"),
+    strip.background = element_rect(fill = "#f2f2f2")
+    )
 
 ggsave(str_glue("~/storage/data/archive/muscle/supp_tables/Figure S1.tiff"),
        p, width = 12, height = 13, units = "in", dpi = 150)

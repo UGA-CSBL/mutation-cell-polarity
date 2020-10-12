@@ -51,7 +51,8 @@ annot <- clinical %>%
 rm(clinical, fpkm.annot)
 
 # Load mutation data ------------------------------
-mutation.dir <- "~/storage/data/archive/muscle/mutation_filtered_by_frequency/combined-stage"
+data.dir <- "~/storage/data/archive/muscle/selected_mutations"
+mutation.dir <- str_glue("{data.dir}/mutation_by_selection/adjpval/1e-3")
 mutations <- NULL
 for (proj in projects) {
   for (stage in stages) {
@@ -65,21 +66,20 @@ for (proj in projects) {
 mutations <- mutations %>%
   select(Project, TumorStage, Symbol, n = MutationNum)
 
-mutation.summary <- mutations %>%
-  group_by(Project, TumorStage) %>%
-  summarise(nGenes = n(),
-            nMutations = sum(n)) %>%
-  inner_join(count(annot, Project, TumorStage),
-             by = c("Project", "TumorStage")) %>%
-  rename(SampleNum = n)
-
-if (!dir.exists("~/storage/data/archive/muscle/mutation_freq/GSEA_early_late/GSEA_summary")) {
-  dir.create("~/storage/data/archive/muscle/mutation_freq/GSEA_early_late/GSEA_summary")
+if (!dir.exists(str_glue("{data.dir}/GSEA_early_late/GSEA_summary"))) {
+  dir.create(str_glue("{data.dir}/GSEA_early_late/GSEA_summary", recursive = T))
 }
 
-if (!file.exists("~/storage/data/archive/muscle/mutation_freq/GSEA_early_late/GSEA_summary/mutations.xlsx")) {
+if (!file.exists(str_glue("{data.dir}/GSEA_early_late/GSEA_summary/mutations.xlsx"))) {
+  mutation.summary <- mutations %>%
+    group_by(Project, TumorStage) %>%
+    summarise(nGenes = n(),
+              nMutations = sum(n)) %>%
+    inner_join(count(annot, Project, TumorStage),
+               by = c("Project", "TumorStage")) %>%
+    rename(SampleNum = n)
   openxlsx::write.xlsx(list(Mutations = mutations, Summary = mutation.summary),
-                       file = "~/storage/data/archive/muscle/mutation_freq/GSEA_early_late/GSEA_summary/mutations.xlsx")
+                       file = str_glue("{data.dir}/GSEA_early_late/GSEA_summary/mutations.xlsx"))
 }
 
 # DEA results -----
@@ -109,18 +109,19 @@ pathways <- enframe(c(
   rename(Pathway = name, Symbols = value) %>%
   mutate(nPathwayGenes = map_int(Symbols, length))
 
-cl <- makeCluster(length(projects)+1, outfile="")
+cl <- makeCluster(length(projects) + 1, outfile = "")
 registerDoSNOW(cl)
-foreach (proj = projects,
-         .packages = c("tibble", "tidyr", "purrr", "dplyr", "stringr", "reactable", "openxlsx")) %dopar%
+foreach(project = projects,
+        .packages = c("tibble", "tidyr", "purrr", "dplyr", "stringr", "reactable", "openxlsx")) %dopar%
   {
+    data.dir <- "~/storage/data/archive/muscle/selected_mutations"
     proj.res <- vector("list", length(stages))
     names(proj.res) <- stages
-    print(str_glue("Working on project {proj}"))
+    print(str_glue("Working on project {project}"))
     for (stage in stages) {
       print(str_glue("---{stage}"))
       gsea.res <- openxlsx::read.xlsx(str_glue(
-        "~/storage/data/archive/muscle/mutation_freq/GSEA_early_late/{proj}.xlsx"
+        "{data.dir}/GSEA_early_late/{project}.xlsx"
       ), sheet = stage) %>%
         as_tibble() %>%
         filter(pval <= 0.2)
@@ -129,11 +130,11 @@ foreach (proj = projects,
         next()
       }
       proj.mutations <- mutations %>%
-        filter(Project == proj & TumorStage == stage) %>%
+        filter(Project == project & TumorStage == stage) %>%
         select(Symbol, n)
 
       proj.dea <- dea.res %>%
-        filter(Project == proj & Stage == stage) %>%
+        filter(Project == project & Stage == stage) %>%
         select(Symbol, log2FC, p_adjusted)
 
       proj.res[[stage]] <- gsea.res %>%
@@ -178,11 +179,11 @@ foreach (proj = projects,
                   htmltools::div(style = "padding: 16px",
                                  reactable(data, outlined = TRUE))
                 }) %>%
-        htmltools::save_html(file = str_glue("~/storage/data/archive/muscle/mutation_freq/GSEA_early_late/GSEA_summary/{proj}_{stage}.html"))
+        htmltools::save_html(file = str_glue("{data.dir}/GSEA_early_late/GSEA_summary/{project}_{stage}.html"))
     }
     openxlsx::write.xlsx(
       proj.res,
-      file = str_glue("~/storage/data/archive/muscle/mutation_freq/GSEA_early_late/GSEA_summary/{proj}.xlsx")
+      file = str_glue("{data.dir}/GSEA_early_late/GSEA_summary/{project}.xlsx")
     )
   }
 stopCluster(cl)
@@ -203,14 +204,15 @@ sessionInfo()
 # [1] stats     graphics  grDevices utils     datasets  methods   base
 #
 # other attached packages:
-# [1] doSNOW_1.0.18     snow_0.4-3        iterators_1.0.12  foreach_1.5.0     reactable_0.1.0.1 fgsea_1.14.0      forcats_0.5.0     stringr_1.4.0     dplyr_0.8.5
-# [10] purrr_0.3.4       readr_1.3.1       tidyr_1.1.0       tibble_3.0.1      ggplot2_3.3.0     tidyverse_1.3.0
+# [1] doSNOW_1.0.18    snow_0.4-3       iterators_1.0.12 foreach_1.5.0    reactable_0.2.0  fgsea_1.15.1     forcats_0.5.0    stringr_1.4.0    dplyr_1.0.0
+# [10] purrr_0.3.4      readr_1.3.1      tidyr_1.1.0      tibble_3.0.1     ggplot2_3.3.2    tidyverse_1.3.0
 #
 # loaded via a namespace (and not attached):
-# [1] tidyselect_1.1.0    haven_2.2.0         lattice_0.20-41     colorspace_1.4-1    vctrs_0.3.0         generics_0.0.2      htmltools_0.4.0     rlang_0.4.6
-# [9] pillar_1.4.4        glue_1.4.1          withr_2.2.0         DBI_1.1.0           BiocParallel_1.22.0 dbplyr_1.4.3        modelr_0.1.8        readxl_1.3.1
-# [17] lifecycle_0.2.0     munsell_0.5.0       gtable_0.3.0        cellranger_1.1.0    zip_2.0.4           rvest_0.3.5         htmlwidgets_1.5.1   codetools_0.2-16
-# [25] parallel_4.0.0      fansi_0.4.1         broom_0.5.6         Rcpp_1.0.4.6        scales_1.1.1        backports_1.1.7     jsonlite_1.6.1      fs_1.4.1
-# [33] gridExtra_2.3       fastmatch_1.1-0     digest_0.6.25       hms_0.5.3           openxlsx_4.1.5      stringi_1.4.6       grid_4.0.0          cli_2.0.2
-# [41] tools_4.0.0         magrittr_1.5        crayon_1.3.4        pkgconfig_2.0.3     ellipsis_0.3.1      Matrix_1.2-18       data.table_1.12.8   xml2_1.3.2
-# [49] reprex_0.3.0        lubridate_1.7.8     assertthat_0.2.1    httr_1.4.1          rstudioapi_0.11     R6_2.4.1            nlme_3.1-147        compiler_4.0.0
+# [1] tidyselect_1.1.0    haven_2.3.1         lattice_0.20-41     colorspace_1.4-1    vctrs_0.3.1         generics_0.0.2      htmltools_0.5.0     blob_1.2.1
+# [9] rlang_0.4.6         pillar_1.4.4        glue_1.4.1          withr_2.2.0         DBI_1.1.0           BiocParallel_1.22.0 dbplyr_1.4.4        modelr_0.1.8
+# [17] readxl_1.3.1        lifecycle_0.2.0     munsell_0.5.0       gtable_0.3.0        cellranger_1.1.0    zip_2.0.4           rvest_0.3.5         htmlwidgets_1.5.1
+# [25] codetools_0.2-16    parallel_4.0.0      fansi_0.4.1         broom_0.5.6         Rcpp_1.0.4.6        scales_1.1.1        backports_1.1.8     jsonlite_1.6.1
+# [33] fs_1.4.1            gridExtra_2.3       fastmatch_1.1-0     digest_0.6.25       hms_0.5.3           openxlsx_4.1.5      stringi_1.4.7       grid_4.0.0
+# [41] cli_2.0.2           tools_4.0.0         magrittr_1.5        crayon_1.3.4        pkgconfig_2.0.3     ellipsis_0.3.1      Matrix_1.2-18       data.table_1.12.8
+# [49] xml2_1.3.2          reprex_0.3.0        lubridate_1.7.9     assertthat_0.2.1    httr_1.4.1          rstudioapi_0.11     R6_2.4.1            nlme_3.1-148
+# [57] compiler_4.0.0

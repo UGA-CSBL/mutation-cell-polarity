@@ -12,7 +12,8 @@ ggscatter(dat, x = "up_cancer_types", y = "down_cancer_types") %>%
         font.main = c(18, "bold", "black"),
         font.legend = 16, font.x = 16, font.y = 16) +
   scale_y_continuous(breaks=0:9) +
-  scale_x_continuous(breaks=0:9)
+  scale_x_continuous(breaks=0:9) +
+  ggtitle("Figure S4")
 
 ggsave("~/storage/data/archive/muscle/supp_tables/Figure S32.tiff",
        width = 7, height = 7, units = "in", dpi = 150)

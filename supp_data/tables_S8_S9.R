@@ -1,3 +1,6 @@
+# Table S8 is what used to be Table 4. Table S9 was Table S7.
+# Table S8: The number of enriched pathways and the differential expressions of the mutated genes.
+# Table S9: Fold-changes in gene-expressions in 78 selected pathways in two stages across nine cancer types.
 library(tidyverse)
 library(openxlsx)
 library(fgsea)
@@ -17,7 +20,8 @@ pws <- read.xlsx("~/storage/data/archive/muscle/supp_tables/Table S6.xlsx",
 pws <- pws[2:length(pws)]
 
 # Load mutation data -----
-mutation.dir <- "~/storage/data/archive/muscle/mutation_filtered_by_frequency/combined-stage"
+data.dir <- "~/storage/data/archive/muscle/selected_mutations"
+mutation.dir <- str_glue("{data.dir}/mutation_by_selection/adjpval/1e-3")
 mutations <- NULL
 for (proj in projects) {
   for (stage in stages) {
@@ -32,7 +36,7 @@ mutations <- mutations %>%
   select(Project, TumorStage, Symbol, n = MutationNum)
 
 # Load mutation GSEA and DEA results -----
-mut.dir <- "~/storage/data/archive/muscle/mutation_freq/GSEA_early_late/GSEA_summary"
+mut.dir <- "~/storage/data/archive/muscle/selected_mutations/GSEA_early_late/GSEA_summary"
 
 mut.gsea <- NULL
 for (proj in projects) {
@@ -139,7 +143,7 @@ pw.mut.count <- mut.gsea %>%
   spread(TumorStage, n)
 
 pw.mut.count[is.na(pw.mut.count)] <- 0
-write.xlsx(pw.mut.count, "~/storage/data/archive/muscle/supp_tables/Table4_1.xlsx")
+write.xlsx(pw.mut.count, "~/storage/data/archive/muscle/supp_tables/TableS8_mut.xlsx")
 
 pw.fc <- mut.gsea %>%
   as_tibble() %>%
@@ -180,23 +184,15 @@ pw.fc.count <- pw.fc %>%
   rename(`Cancer Type` = Project)
 
 pw.fc.count[is.na(pw.fc.count)] <- 0
-write.xlsx(pw.fc.count, "~/storage/data/archive/muscle/supp_tables/Table4_2.xlsx")
+write.xlsx(pw.fc.count, "~/storage/data/archive/muscle/supp_tables/TableS8_DE.xlsx")
 
 pw.fc %>%
   mutate(Project = str_remove(Project, "^TCGA-")) %>%
   mutate(Pathway = factor(Pathway, levels = pws)) %>%
   unite(TumorStage, Project, TumorStage) %>%
   spread(TumorStage, PathwayRegulation) %>%
-  write.xlsx("~/storage/data/archive/muscle/supp_tables/Table_5_FC.xlsx")
+  write.xlsx("~/storage/data/archive/muscle/supp_tables/Table_S9.xlsx")
 
-pw.fc %>%
-  mutate(Project = str_remove(Project, "^TCGA-")) %>%
-  mutate(Pathway = factor(Pathway, levels = pws)) %>%
-  spread(TumorStage, PathwayRegulation) %>%
-  rename(`Cancer Type` = Project) %>%
-  write.xlsx("~/storage/data/archive/muscle/supp_tables/Table_S7.xlsx")
-
-# Table S9 -----
 # pw.fc %>%
 #   mutate(Project = str_remove(Project, "^TCGA-")) %>%
 #   mutate(Pathway = factor(Pathway, levels = pws)) %>%

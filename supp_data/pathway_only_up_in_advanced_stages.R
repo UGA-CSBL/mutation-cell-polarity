@@ -1,3 +1,4 @@
+# Table S14: Uniquely up-regulated pathways in stages 1 and stage 4, respectively, across nine cancer types.
 library(tidyverse)
 library(fgsea)
 
@@ -140,14 +141,22 @@ pw.fc.score[is.na(pw.fc.score)] <- 0
 #          `Only Advanced stages up` = `Late up`) %>%
 #   data.table::fwrite("~/different_score_cutoffs_pathway_count.csv")
 #
-pw.fc.score %>%
+
+# Pathway uniquely up-regulated in Stage I
+res.1 <- pw.fc.score %>%
+  filter(`Stage I` > 0) %>%
+  filter(`Stage II` < 0 & `Stage III` < 0 & `Stage IV` < 0) %>%
+  arrange(Project, desc(`Stage I`)) %>%
+  select(`Cancer Type` = Project, Pathway, `Stage I`, `Stage IV`)
+
+# Pathway uniquely up-regulated in Stage IV
+res.2 <- pw.fc.score %>%
   filter(`Stage I` < 0 & `Stage II` < 0 & `Stage III` < 0) %>%
   filter(`Stage IV` > 0) %>%
   arrange(Project, desc(`Stage IV`)) %>%
-data.table::fwrite("~/storage/data/archive/muscle/supp_tables/up_in_stageIV.csv")
+  select(`Cancer Type` = Project, Pathway, `Stage I`, `Stage IV`)
 
-pw.fc.score %>%
-  filter(`Stage I` > 0) %>%
-  filter(`Stage II` < 0 & `Stage III` < 0 & `Stage IV` < 0) %>%
-  arrange(Project, desc(`Stage IV`)) %>%
-  data.table::fwrite("~/storage/data/archive/muscle/supp_tables/up_in_stageI.csv")
+openxlsx::write.xlsx(list(`Up-regulated in Stage I` = res.1,
+                          `Up-regulated in Stage IV` = res.2),
+                     "~/storage/data/archive/muscle/supp_tables/Table S14.xlsx"
+                     )

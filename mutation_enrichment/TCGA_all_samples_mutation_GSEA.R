@@ -2,7 +2,6 @@ library(tidyverse)
 library(fgsea)
 
 rm(list = ls())
-set.seed(1005)
 
 # Load annotation data ------------------------------
 id.map <- data.table::fread("~/CSBL_shared/ID_mapping/Ensembl_symbol_entrez.csv") %>%
@@ -42,13 +41,8 @@ annot <- clinical %>%
   inner_join(fpkm.annot, by = c("Project", "SampleID")) %>%
   distinct(SampleID, .keep_all = T)
 
-projects <- annot %>%
-  count(Project, TumorStage) %>%
-  filter(n >= 15 | Project == "TCGA-LIHC") %>%
-  spread(TumorStage, n) %>%
-  select(-Normal) %>%
-  filter(rowSums(is.na(.)) == 0) %>%
-  pull(Project)
+projects <- c("TCGA-BRCA", "TCGA-COAD", "TCGA-HNSC", "TCGA-KIRC", "TCGA-KIRP",
+              "TCGA-LIHC", "TCGA-LUAD", "TCGA-STAD", "TCGA-THCA")
 
 annot <- annot %>%
   filter(Project %in% projects) %>%
@@ -63,7 +57,8 @@ stages <- sort(unique(annot$TumorStage))
 rm(clinical, fpkm.annot)
 
 # Load mutation data ------------------------------
-mutation.dir <- "~/storage/data/archive/muscle/mutation_filtered_by_frequency/combined-stage"
+data.dir <- "~/storage/data/archive/muscle/selected_mutations"
+mutation.dir <- str_glue("{data.dir}/mutation_by_selection/adjpval/1e-3")
 mutations <- NULL
 for (proj in projects) {
   for (stage in stages) {
@@ -78,89 +73,127 @@ mutations <- mutations %>%
   select(Project, TumorStage, Symbol, n = MutationNum)
 
 # GSEA of mutations -----
-gsea.analysis <- function(dat) {
+gsea.analysis <- function(dat, pws) {
   stats <- dat %>%
     deframe()
 
-  fgsea(pathways = pathways,
+  fgsea(pathways = pws,
         stats = stats,
         eps = 0,
-        # minSize = 15, maxSize = 500,
         scoreType = "pos"
   ) %>%
     arrange(padj, pval)
 }
 
+if (!dir.exists(str_glue("{data.dir}/GSEA_all_samples"))) {
+  dir.create(str_glue("{data.dir}/GSEA_all_samples"))
+}
 res.mut <- NULL
 for (proj in projects) {
+  set.seed(1005)
   print(str_glue("Working on {proj}"))
 
   proj.mutations <- mutations %>%
     filter(Project == proj) %>%
-    select(Symbol, MutationNum = n) %>%
+    group_by(Symbol) %>%
+    summarise(MutationNum = sum(n)) %>%
+    ungroup() %>%
     arrange(desc(MutationNum))
 
-  proj.res.mut <- gsea.analysis(proj.mutations) %>%
+  proj.res.mut <- gsea.analysis(proj.mutations, pathways) %>%
     mutate(Project = proj) %>%
     select(Project, everything())
 
   res.mut <- bind_rows(res.mut, proj.res.mut)
 }
-data.table::fwrite(res.mut, file = "~/storage/data/archive/muscle/mutation_freq/filtered_mutations_all_samples_GSEA.csv")
+data.table::fwrite(res.mut, file = str_glue("{data.dir}/GSEA_all_samples/filtered_mutations_all_samples_GSEA.csv"))
+
+# Highly informative pathways -----
+# pw.annot <- data.table::fread(
+#   "http://supfam.org/SUPERFAMILY/Domain2GO/SDFO.all.txt",
+#   skip = 1)
+# go.pws <- pw.annot %>%
+#   filter(GO_subontology == "biological_process" &
+#            str_starts(SDFO_level, "Highly")) %>%
+#   pull(GO_name) %>%
+#   str_to_upper() %>%
+#   str_replace_all("[\\s-]+", "_")
+# go.pws <- paste0("GO_", go.pws)
+# reactome.pws <- names(pathways)[str_starts(names(pathways), "REACTOME_")]
+# pathways.filtered <- pathways[names(pathways) %in% c(go.pws, reactome.pws)]
+# res.mut <- NULL
+# for (proj in projects) {
+#   set.seed(1005)
+#   print(str_glue("Working on {proj}"))
+#
+#   proj.mutations <- mutations %>%
+#     filter(Project == proj) %>%
+#     group_by(Symbol) %>%
+#     summarise(MutationNum = sum(n)) %>%
+#     ungroup() %>%
+#     arrange(desc(MutationNum))
+#
+#   proj.res.mut <- gsea.analysis(proj.mutations, pathways.filtered) %>%
+#     mutate(Project = proj) %>%
+#     select(Project, everything())
+#
+#   res.mut <- bind_rows(res.mut, proj.res.mut)
+# }
+# data.table::fwrite(res.mut, file = str_glue("{data.dir}/GSEA_all_samples/filtered_mutations_all_samples_filtered_pws_GSEA.csv"))
 
 # All mutations -----
-mutation.impact <- data.table::fread("~/CSBL_shared/UCSC_Xena/DNASeq/mutation_impact.csv") %>%
-  group_by(Impact) %>%
-  summarise(Term = paste(Term, collapse = "|"))
-mutations <- data.table::fread(
-  "~/CSBL_shared/UCSC_Xena/DNASeq/GDC-PANCAN.mutect2_snv.tsv"
-) %>%
-  filter(Sample_ID %in% annot$SampleID) %>%
-  mutate(Impact = case_when(
-    str_detect(effect, mutation.impact$Term[mutation.impact$Impact == "HIGH"]) ~ "HIGH",
-    str_detect(effect, mutation.impact$Term[mutation.impact$Impact == "MODERATE"]) ~ "MODERATE",
-    str_detect(effect, mutation.impact$Term[mutation.impact$Impact == "MODIFIER"]) ~ "MODIFIER",
-    str_detect(effect, mutation.impact$Term[mutation.impact$Impact == "LOW"]) ~ "LOW",
-    T ~ "OTHER"  # not present
-  )) %>%
-  filter(Impact != "LOW") %>%
-  select(SampleID = Sample_ID, Symbol = gene, Impact)
-
-transform.alias <- function(genes) {
-  bind_cols(
-    Alias = genes,
-    Symbol = limma::alias2SymbolTable(genes)
-  )
-}
-
-mutated.genes <- unique(mutations$Symbol)
-mutated.genes <- transform.alias(mutated.genes) %>%
-  filter(!is.na(Symbol))
-
-mutations <- mutations %>%
-  inner_join(mutated.genes, by = c("Symbol" = "Alias")) %>%
-  select(SampleID, Symbol = Symbol.y, Impact)
-
-res.mut <- NULL
-for (proj in projects) {
-  print(str_glue("Working on {proj}"))
-
-  proj.mutations <- mutations %>%
-    filter(SampleID %in% annot$SampleID[annot$Project == proj]) %>%
-    count(Symbol, Impact) %>%
-    spread(Impact, n) %>%
-    replace_na(list(HIGH = 0, MODERATE = 0, MODIFIER = 0)) %>%
-    mutate(MutationNum = HIGH + MODERATE + MODIFIER) %>%
-    arrange(desc(MutationNum), desc(HIGH), desc(MODERATE), desc(MODIFIER), Symbol) %>%
-    select(Symbol, MutationNum)
-
-  proj.res.mut <- gsea.analysis(proj.mutations) %>%
-    mutate(Project = proj) %>%
-    select(Project, everything())
-
-  res.mut <- bind_rows(res.mut, proj.res.mut)
-}
-data.table::fwrite(res.mut, file = "~/storage/data/archive/muscle/mutation_freq/all_mutations_all_samples_GSEA.csv")
+# mutation.impact <- data.table::fread("~/CSBL_shared/UCSC_Xena/DNASeq/mutation_impact.csv") %>%
+#   group_by(Impact) %>%
+#   summarise(Term = paste(Term, collapse = "|"))
+# mutations <- data.table::fread(
+#   "~/CSBL_shared/UCSC_Xena/DNASeq/GDC-PANCAN.mutect2_snv.tsv"
+# ) %>%
+#   filter(Sample_ID %in% annot$SampleID) %>%
+#   mutate(Impact = case_when(
+#     str_detect(effect, mutation.impact$Term[mutation.impact$Impact == "HIGH"]) ~ "HIGH",
+#     str_detect(effect, mutation.impact$Term[mutation.impact$Impact == "MODERATE"]) ~ "MODERATE",
+#     str_detect(effect, mutation.impact$Term[mutation.impact$Impact == "MODIFIER"]) ~ "MODIFIER",
+#     str_detect(effect, mutation.impact$Term[mutation.impact$Impact == "LOW"]) ~ "LOW",
+#     T ~ "OTHER"  # not present
+#   )) %>%
+#   filter(Impact != "LOW") %>%
+#   select(SampleID = Sample_ID, Symbol = gene, Impact)
+#
+# transform.alias <- function(genes) {
+#   bind_cols(
+#     Alias = genes,
+#     Symbol = limma::alias2SymbolTable(genes)
+#   )
+# }
+#
+# mutated.genes <- unique(mutations$Symbol)
+# mutated.genes <- transform.alias(mutated.genes) %>%
+#   filter(!is.na(Symbol))
+#
+# mutations <- mutations %>%
+#   inner_join(mutated.genes, by = c("Symbol" = "Alias")) %>%
+#   select(SampleID, Symbol = Symbol.y, Impact)
+#
+# res.mut <- NULL
+# for (proj in projects) {
+#   print(str_glue("Working on {proj}"))
+#
+#   proj.mutations <- mutations %>%
+#     filter(SampleID %in% annot$SampleID[annot$Project == proj]) %>%
+#     count(Symbol, Impact) %>%
+#     spread(Impact, n) %>%
+#     replace_na(list(HIGH = 0, MODERATE = 0, MODIFIER = 0)) %>%
+#     mutate(MutationNum = HIGH + MODERATE + MODIFIER) %>%
+#     arrange(desc(MutationNum), desc(HIGH), desc(MODERATE), desc(MODIFIER), Symbol) %>%
+#     select(Symbol, MutationNum)
+#
+#   proj.res.mut <- gsea.analysis(proj.mutations) %>%
+#     mutate(Project = proj) %>%
+#     select(Project, everything())
+#
+#   res.mut <- bind_rows(res.mut, proj.res.mut)
+# }
+# data.table::fwrite(res.mut, file = "~/storage/data/archive/muscle/mutation_freq/all_mutations_all_samples_GSEA.csv")
 
 sessionInfo()
 # R version 4.0.0 (2020-04-24)

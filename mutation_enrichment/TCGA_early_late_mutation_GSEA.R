@@ -2,7 +2,6 @@ library(tidyverse)
 library(fgsea)
 
 rm(list = ls())
-set.seed(1005)
 
 # Load annotation data ------------------------------
 id.map <- data.table::fread("~/CSBL_shared/ID_mapping/Ensembl_symbol_entrez.csv") %>%
@@ -98,11 +97,11 @@ mutations <- mutations %>%
   select(SampleID, Symbol = Symbol.y, Impact)
 
 # GSEA of mutations -----
-gsea.analysis <- function(dat) {
+gsea.analysis <- function(dat, pws) {
   stats <- dat %>%
     deframe()
 
-  fgsea(pathways = pathways,
+  fgsea(pathways = pws,
         stats = stats,
         eps = 0,
         # minSize = 15, maxSize = 500,
@@ -117,6 +116,7 @@ for (proj in projects) {
   names(res.mut) <- stages
 
   for (stage in stages) {
+    set.seed(1005)
     proj.annot <- annot %>%
       filter(Project == proj & TumorStage == stage)
 
@@ -129,7 +129,7 @@ for (proj in projects) {
       arrange(desc(MutationNum), desc(HIGH), desc(MODERATE), desc(MODIFIER), Symbol) %>%
       select(Symbol, MutationNum)
 
-    res.mut[[stage]] <- gsea.analysis(proj.mutations)
+    res.mut[[stage]] <- gsea.analysis(proj.mutations, pathways)
   }
   openxlsx::write.xlsx(res.mut, file = str_glue(
     "~/storage/data/archive/muscle/mutation_freq/GSEA_early_late_all_mutations/{proj}.xlsx"))
